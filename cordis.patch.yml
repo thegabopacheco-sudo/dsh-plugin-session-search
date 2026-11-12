@@ -1,0 +1,16 @@
+# dsh-plugin-session-search — capa bundle de DSH.
+# Inserta una fila @deepseek-ai/dsh-mcp-client que lanza el servidor como "sessions".
+# Tools resultantes: mcp__sessions__* (ver README).
+- insert:
+    - id: mcp-session-search
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: sessions
+        transport: stdio
+        command: !!js process.execPath
+        args:
+          - !!js "(process.env.DSH_HOME && process.env.DSH_HOME.trim() !== '' ? process.env.DSH_HOME : (process.env.USERPROFILE || process.env.HOME || '') + '/.dsh') + '/plugins/session-search/server.mjs'"
+        env:
+          ELECTRON_RUN_AS_NODE: '1'
+        failOnStartupError: false
+        toolCallTimeoutMs: 60000
