@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-session-search",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Buscador del historial de sesiones de DeepSeek Harness: indexa sesiones locales (transcripciones zstd y cache de proyeccion), busca por texto, lista recientes y extrae fragmentos.",
   "type": "module",
   "license": "MIT",

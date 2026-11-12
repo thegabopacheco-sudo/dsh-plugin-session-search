@@ -10,7 +10,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 const DSH_HOME = (() => {
   const v = process.env.DSH_HOME && process.env.DSH_HOME.trim();
   return v || path.join(process.env.USERPROFILE || process.env.HOME || os.homedir(), '.dsh');
@@ -23,14 +23,51 @@ const log = (m) => process.stderr.write(`[sessions] ${m}\n`);
 
 function safeDir(name) { try { return readdirSync(name, { withFileTypes: true }); } catch { return []; } }
 
-function decodeSession(sessionPath) {
-  const compressed = readFileSync(sessionPath);
-  if (compressed.length > MAX_DECOMPRESSED_BYTES / 20) {
-    // evita descomprimir archivos gigantes por completo
+function frameLength(buffer, offset) {
+  if (buffer.length - offset < 8) return -1;
+  if (buffer.readUInt32LE(offset) !== 0xFD2FB528) return -1;
+  let pos = offset + 4;
+  const descriptor = buffer[pos++];
+  const fcsFlag = (descriptor >> 6) & 3;
+  const singleSegment = (descriptor >> 5) & 1;
+  const checksum = (descriptor >> 2) & 1;
+  const dictIdFlag = descriptor & 3;
+  if (!singleSegment) pos += 1;
+  if (dictIdFlag === 1) pos += 1; else if (dictIdFlag === 2) pos += 2; else if (dictIdFlag === 3) pos += 4;
+  if (fcsFlag === 0 && singleSegment) pos += 1; else if (fcsFlag === 1) pos += 2; else if (fcsFlag === 2) pos += 4; else if (fcsFlag === 3) pos += 8;
+  for (;;) {
+    if (buffer.length - pos < 3) return -1;
+    const header = buffer.readUIntLE(pos, 3);
+    pos += 3;
+    const lastBlock = header & 1;
+    const blockType = (header >> 1) & 3;
+    const blockSize = header >> 3;
+    if (blockType === 1) pos += 1; else if (blockType === 2) pos += blockSize; else if (blockType === 0) pos += blockSize; else return -1;
+    if (lastBlock) break;
   }
-  const buffer = zstdDecompressSync(compressed);
-  if (buffer.length > MAX_DECOMPRESSED_BYTES) throw new Error('sesión demasiado grande para indexar');
-  return buffer.toString('utf8');
+  if (checksum) pos += 4;
+  return pos - offset;
+}
+
+function decodeSession(sessionPath) {
+  const buffer = readFileSync(sessionPath);
+  const parts = [];
+  let offset = 0;
+  let frames = 0;
+  while (offset < buffer.length) {
+    const length = frameLength(buffer, offset);
+    if (length <= 0) break;
+    try {
+      const output = zstdDecompressSync(buffer.subarray(offset, offset + length));
+      if (parts.length === 0 || output.length > 0) parts.push(output);
+    } catch { /* frame corrupto: se ignora y se sigue con el próximo */ }
+    offset += length;
+    frames++;
+  }
+  if (frames === 0) throw new Error('sin frames zstd válidos');
+  const text = Buffer.concat(parts);
+  if (text.length > MAX_DECOMPRESSED_BYTES) throw new Error('sesión demasiado grande para indexar');
+  return text.toString('utf8');
 }
 
 function readProjection(sessionId) {

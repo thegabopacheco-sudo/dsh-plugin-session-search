@@ -17,7 +17,9 @@ function makeSession(workspace, sessionId, texts) {
   const dir = path.join(sessionsRoot, workspace, sessionId);
   mkdirSync(dir, { recursive: true });
   const lines = texts.map((text, index) => JSON.stringify({ type: index % 2 === 0 ? 'user' : 'assistant', text }));
-  writeFileSync(path.join(dir, 'session.v4.jsonl.zstd'), zstdCompressSync(Buffer.from(lines.join('\n') + '\n', 'utf8')));
+  // DSH escribe un frame zstd por evento (frames concatenados), no un único frame.
+  const frames = lines.map((line) => zstdCompressSync(Buffer.from(line + '\n', 'utf8')));
+  writeFileSync(path.join(dir, 'session.v4.jsonl.zstd'), Buffer.concat(frames));
   return path.join(dir, 'session.v4.jsonl.zstd');
 }
 
